@@ -145,16 +145,29 @@ def load_tabular_file_from_bytes(file_bytes: bytes, file_name: str = "") -> tupl
     for encoding in candidate_encodings:
         try:
             text = file_bytes.decode(encoding)
-            dataframe = pd.read_csv(io.StringIO(text))
-            metadata["encoding"] = encoding
-            metadata["attempts"].append(encoding)
-            logger.info(
-                "Loaded CSV file %s using encoding %s%s",
-                file_name or "upload",
-                encoding,
-                f" (detected by {detected_by})" if encoding == detected_encoding and detected_by else "",
-            )
-            return dataframe, metadata
+            for sep in [None, ",", ";", "\t", "|"]:
+                try:
+                    dataframe = pd.read_csv(
+                        io.StringIO(text),
+                        sep=sep,
+                        engine="python",
+                        on_bad_lines="skip",
+                    )
+
+                    if dataframe.shape[1] > 1:
+                        metadata["encoding"] = encoding
+                        metadata["attempts"].append(f"{encoding} ({sep})")
+                        logger.info(
+                            "Loaded CSV file %s using encoding %s and separator %s%s",
+                            file_name or "upload",
+                            encoding,
+                            sep if sep is not None else "auto",
+                            f" (detected by {detected_by})" if encoding == detected_encoding and detected_by else "",
+                        )
+                        return dataframe, metadata
+
+                except Exception:
+                    pass
         except UnicodeDecodeError as exc:
             metadata["attempts"].append(f"{encoding}: decode error")
             last_error = exc
